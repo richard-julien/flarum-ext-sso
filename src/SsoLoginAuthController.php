@@ -74,15 +74,19 @@ class SsoLoginAuthController implements ControllerInterface
             $forwardNonce = $parsePayload["nonce"];
             if (true || $noncePreviouslySend == $forwardNonce) {
                 $email = $parsePayload["email"];
-                $username = $parsePayload["username"];
+                $username = preg_replace('/[^a-z0-9-_]/i', '', $parsePayload["username"]);
                 //Search user for loggin
                 $identification = ['email' => $email];
+                $avatarUrl = isset($parsePayload['avatarUrl']) ? $parsePayload["avatarUrl"] : "";
                 $originalUrl = isset($parsePayload['originalUrl']) ? $parsePayload["originalUrl"] : $this->app->url();
                 if ($user = User::where('email', $email)->first()) {
-                    return $this->redirectWithAuth($originalUrl, $request, $identification);
+                    //Update user
+                    $bodyOfUpdate = $this->updateUser($user->id, $username, $avatarUrl);
+                    if (isset($bodyOfUpdate->data)) {
+                        return $this->redirectWithAuth($originalUrl, $request, $identification);
+                    }
                 } else {
                     //Create user
-                    $avatarUrl = isset($parsePayload['avatarUrl']) ? $parsePayload["avatarUrl"] : "";
                     $bodyOfRegistration = $this->registerUser($username, $email, $avatarUrl);
                     if (isset($bodyOfRegistration->data)) {
                         return $this->redirectWithAuth($originalUrl, $request, $identification);
@@ -103,17 +107,43 @@ class SsoLoginAuthController implements ControllerInterface
      *
      * @return \Psr\Http\Message\ResponseInterface
      */
-    public function redirectWithAuth($url, $request, $identification, $suggestions = []) {
+    public function redirectWithAuth($url, $request, $identification, $suggestions = [])
+    {
         $request->getAttribute('session')->remove('sso_nonce');
+
         return $this->authResponse->make($request, $identification, $suggestions)
             ->withHeader('Location', $url)->withStatus(302); //Force a redirect
+    }
+
+    /**
+     * @param $userId
+     * @param $username
+     * @param $avatarUrl
+     *
+     * @return mixed
+     */
+    public function updateUser($userId, $username, $avatarUrl)
+    {
+        $controller = 'Flarum\Api\Controller\UpdateUserController';
+        $actor = new SsoAdminUser();
+        $body = [
+            'data' => [
+                'attributes' => [
+                    'username' => $username,
+                    'avatarUrl' => $avatarUrl,
+                ],
+            ],
+        ];
+        $response = $this->api->send($controller, $actor, ['id' => $userId], $body);
+        $bodyOfRegistration = json_decode($response->getBody());
+
+        return $bodyOfRegistration;
     }
 
     /**
      * @param $username
      * @param $email
      * @param $avatarUrl
-     * @param $controller
      *
      * @return mixed
      */
@@ -128,9 +158,9 @@ class SsoLoginAuthController implements ControllerInterface
                     'email' => $email,
                     'password' => str_random(20),
                     'isActivated' => true,
-                    'avatarUrl' => $avatarUrl
-                ]
-            ]
+                    'avatarUrl' => $avatarUrl,
+                ],
+            ],
         ];
         $response = $this->api->send($controller, $actor, [], $body);
         $bodyOfRegistration = json_decode($response->getBody());
