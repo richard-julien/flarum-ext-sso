@@ -1,0 +1,11 @@
+flarum-ext-sso:
+  admin:
+    sso_settings:
+      title: Single Sign On
+      id: SSO client ID
+      loginUrl: Login Url
+      logoutUrl: Logout Url
+      secret: Secret key
+  forum:
+    sso_log_in: Login with SSO
+    sso_log_out: Logout from SSO
